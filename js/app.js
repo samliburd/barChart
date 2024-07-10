@@ -20,7 +20,16 @@ const tooltipSize = {
   borderRadius: 5,
 };
 
-size.barWidth = (size.width / data.length);
+size.barWidth = size.width / data.length;
+
+// Utility functions
+const addStyles = (styles, selection) => {
+  Object.entries(styles).forEach(([prop, val]) => selection.style(prop, val));
+};
+
+const addAttrs = (attrs, selection) => {
+  Object.entries(attrs).forEach(([prop, val]) => selection.attr(prop, val));
+};
 
 // Calculate domains
 const calculateDomain = (data) => {
@@ -34,28 +43,32 @@ const calculateDomain = (data) => {
 
 const [dateDomain, gdpDomain] = calculateDomain(data);
 
-// Create scales
-const xScale = d3.scaleTime()
-  .domain(dateDomain)
-  .range([size.padding, size.width]);
+// Function to create scales and invertScale function
+const createScales = (dateDomain, gdpDomain, size) => {
+  const xScale = d3.scaleTime()
+    .domain(dateDomain)
+    .range([size.padding, size.width]);
 
-const yScale = d3.scaleLinear()
-  .domain(gdpDomain).nice()
-  .range([size.height - size.padding, size.padding]);
+  const yScale = d3.scaleLinear()
+    .domain(gdpDomain).nice()
+    .range([size.height - size.padding, size.padding]);
 
-
-
-const invertScale = (d) => {
-  const options = {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
+  const invertScale = (d) => {
+    const options = {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    };
+    return [xScale.invert(d[0]).toLocaleString('en-GB', options), Math.round(yScale.invert(d[1]))];
   };
-  return [xScale.invert(d[0]).toLocaleString('en-GB', options), Math.round(yScale.invert(d[1]))];
+
+  return { xScale, yScale, invertScale };
 };
 
-let currencyFormat = new Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD'});
+const { xScale, yScale, invertScale } = createScales(dateDomain, gdpDomain, size);
+
+let currencyFormat = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
 // Create axes
 const xAxis = d3.axisBottom(xScale)
@@ -77,26 +90,19 @@ const renderTooltip = (t) => {
   const styles = {
     position: "absolute",
     opacity: 0,
-    width: `${t.width}px`,
-    height: `${t.height}px`,
-    padding: `${t.padding}px`,
-    "border-radius": "5px",  // Note: in JavaScript object keys, it's camelCase, not kebab-case
+    width: `${width}px`,
+    height: `${height}px`,
+    padding: `${padding}px`,
+    "border-radius": "5px",
     "background-color": "#CCC"
-  }
+  };
 
   const tooltip = d3.select('.container')
     .append('div')
-    .attr('id', 'tooltip')
-    // .style("position", "absolute")
-    // .style('opacity', 0)
-    // .style("width", `${t.width}px`)
-    // .style("height", `${t.height}px`)
-    // .style("padding", `${t.padding}px`)
-    // .style("border-radius", "5px")
-    // .style("background-color", "#CCC");
-  Object.entries(styles).forEach(([prop,val]) => d3.select("#tooltip").style(prop,val))
+    .attr('id', 'tooltip');
 
-  return tooltip
+  addStyles(styles, tooltip);
+  return tooltip;
 };
 
 // Render SVG and its components
@@ -104,6 +110,7 @@ const renderSVG = () => {
   const parsedData = data.map((d) => {
     return [xScale(new Date(d[0])), yScale(d[1])];
   });
+
   const tooltip = renderTooltip(tooltipSize);
 
   const renderAxes = (svg) => {
@@ -117,18 +124,25 @@ const renderSVG = () => {
   };
 
   const handleMouseOver = function (event, d) {
-    let dataValueDate = this.getAttribute("data-value-date");
-    let dataValueGdp = this.getAttribute("data-value-gdp");
-    let { width, height, padding, offset, borderRadius } = tooltipSize;
-    let pageX = event.pageX;
-    let tooltipX = pageX - width - padding - (size.padding * 2);
+    const dataValueDate = d3.select(this).attr("data-value-date");
+    const dataValueGdp = d3.select(this).attr("data-value-gdp");
+    const { width, height, padding, offset, borderRadius } = tooltipSize;
+    const pageX = event.pageX;
+    const tooltipX = pageX - width - padding - (size.padding * 2);
 
-    tooltip.style("opacity", 1)
-      .html(`<strong>Date: </strong>${dataValueDate}<br/><strong>GDP: </strong>${currencyFormat.format(Number(dataValueGdp))}`)
-      .style("top", `${event.pageY - 100}px`)
-      .style("height", "fit-content")
-      .attr("pageX", pageX)
-      .attr("tooltipX", tooltipX);
+    const styles = {
+      opacity: 1,
+      top: `${event.pageY - 100}px`,
+      height: "fit-content"
+    };
+    const attrs = {
+      pageX: pageX,
+      tooltipX: tooltipX
+    };
+
+    tooltip.html(`<strong>Date: </strong>${dataValueDate}<br/><strong>GDP: </strong>${currencyFormat.format(Number(dataValueGdp))}`);
+    addStyles(styles, tooltip);
+    addAttrs(attrs, tooltip);
 
     if (tooltipX < 10) {
       tooltip.style("left", `${pageX + size.padding}px`);
@@ -137,23 +151,30 @@ const renderSVG = () => {
     }
   };
 
+  const handleMouseOut = function () {
+    tooltip.style("opacity", 0);
+  };
+
   const plotBars = (svg) => {
-    svg.selectAll("rect")
+    const attrs = {
+      "width": size.barWidth,
+      "height": (d) => size.height - d[1] - size.padding,
+      "x": (d) => d[0],
+      "y": (d) => d[1] - 1,
+      "index": (d, i) => i,
+      "data-value-date": (d) => `${invertScale(d)[0]}`,
+      "data-value-gdp": (d) => `${invertScale(d)[1]}`,
+      "fill": (d, i) => (i % 2 === 0 ? "#CCC" : "#AAA")
+    };
+
+    const bars = svg.selectAll("rect")
       .data(parsedData)
       .enter()
       .append("rect")
-      .attr("width", size.barWidth)
-      .attr("height", (d) => size.height - d[1] - size.padding)
-      .attr("x", (d) => d[0])
-      .attr("y", (d) => d[1] - 1)
-      .attr("index", (d, i) => i)
-      .attr("data-value-date", (d) => `${invertScale(d)[0]}`)
-      .attr("data-value-gdp", (d) => `${invertScale(d)[1]}`)
-      .attr("fill", (d, i) => (i % 2 === 0 ? "#CCC" : "#AAA"))
       .on("mouseover", handleMouseOver)
-      .on("mouseout", function () {
-        tooltip.style("opacity", 0);
-      });
+      .on("mouseout", handleMouseOut);
+
+    addAttrs(attrs, bars);
   };
 
   const svg = container
