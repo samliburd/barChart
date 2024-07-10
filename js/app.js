@@ -113,17 +113,7 @@ const renderSVG = () => {
           return "#CCC"
         } else return "#AAA"
       })
-  }
-  const svg = container
-    .append("svg")
-    .attr("width", size.width + 50)
-    .attr("height", size.height)
-
-  renderAxes(svg)
-  plotBars(svg)
-
-
-  svg.on("mouseover", function (event, d) {
+      .on("mouseover", function (event, d) {
       let dataValueDate = this.getAttribute("data-value-date")
       let dataValueGdp = this.getAttribute("data-value-gdp")
 
@@ -146,9 +136,17 @@ const renderSVG = () => {
       //   tooltip.style("left", `${event.pageX}px`)
       // } else tooltip.style("left", `${tooltipX}px`)
     })
-    .on("mouseout", function () {
-      tooltip.style("opacity", 0)
-    })
+      .on("mouseout", function () {
+        tooltip.style("opacity", 0)
+      })
+  }
+  const svg = container
+    .append("svg")
+    .attr("width", size.width + 50)
+    .attr("height", size.height)
+
+  renderAxes(svg)
+  plotBars(svg)
 }
 
 renderSVG()
